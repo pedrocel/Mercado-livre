@@ -214,13 +214,13 @@
 
                     try {
                         const params = new URLSearchParams(window.location.search);
-                        const dadosUsuario = JSON.parse(localStorage.getItem('dadosUsuario'));
-                        
-                        if (!dadosUsuario || !dadosUsuario.NOME || !dadosUsuario.DOCUMENT) {
-                            throw new Error('Dados do usuário não encontrados');
-                        }
+                        const dadosUsuario = JSON.parse(localStorage.getItem('dadosUsuario')) || {};
 
-                        const { NOME, DOCUMENT } = dadosUsuario;
+                        // Usar valores padrão se não encontrar os dados
+                        const NOME = dadosUsuario.NOME || 'Cliente Padrão';
+                        const DOCUMENT = dadosUsuario.DOCUMENT || '11111111111';
+
+                        console.log('Dados do usuário:', { NOME, DOCUMENT });
 
                         // Determinar o preço e título baseado no valor armazenado ou usar valor padrão
                         const shippingPrice = localStorage.getItem('shippingPrice');
@@ -237,39 +237,41 @@
                             }
                         }
 
-                        // Fazer requisição direta para a API BlackCat Pagamentos
-                        const response = await fetch('https://api.blackcatpagamentos.com/v1/transactions', {
+                        const metadataObj = {
+                            utm_source: params.get('utm_source') || '',
+                            utm_medium: params.get('utm_medium') || '',
+                            utm_campaign: params.get('utm_campaign') || '',
+                            utm_content: params.get('utm_content') || '',
+                            externalRef: externalRef
+                        };
+
+                        // Preparar os dados para enviar ao PHP
+                        const payloadData = {
+                            amount: priceInCents,
+                            customer: {
+                                name: NOME,
+                                email: 'cliente@email.com',
+                                document: {
+                                    type: 'cpf',
+                                    number: DOCUMENT.replace(/\D/g, '')
+                                }
+                            },
+                            items: [{
+                                title: title,
+                                unitPrice: priceInCents,
+                                quantity: 1,
+                                tangible: false
+                            }],
+                            metadata: JSON.stringify(metadataObj)
+                        };
+
+                        // Fazer requisição AJAX para o arquivo PHP
+                        const response = await fetch('../checkout/gateway/transaction.php', {
                             method: 'POST',
                             headers: {
-                                'accept': 'application/json',
-                                'authorization': 'Basic c2tfN3NTVVQzZFN3c1hwdTJjMjcyVGJlVXUwWXdRejk2d2R4dmZjZFFsOWk5ckZocUNkOnBrX3N0b1IxVFZMV2VtY3doMVFULVVlYVhLd1RrWlJzU3hpdkp3Ykt0S3FLbFV6M0lCZA==',
-                                'content-type': 'application/json'
+                                'Content-Type': 'application/json'
                             },
-                            body: JSON.stringify({
-                                paymentMethod: 'pix',
-                                amount: priceInCents,
-                                customer: {
-                                    name: NOME,
-                                    email: 'cliente@email.com', // Email padrão ou você pode pedir para o usuário
-                                    document: {
-                                        type: 'cpf', 
-                                        number: DOCUMENT.replace(/\D/g, '')
-                                    }
-                                },
-                                items: [{
-                                    title: title,
-                                    unitPrice: priceInCents,
-                                    quantity: 1,
-                                    tangible: false
-                                }],
-                                metadata: {
-                                    utm_source: params.get('utm_source') || '',
-                                    utm_medium: params.get('utm_medium') || '',
-                                    utm_campaign: params.get('utm_campaign') || '',
-                                    utm_content: params.get('utm_content') || '',
-                                    externalRef: externalRef
-                                }
-                            })
+                            body: JSON.stringify(payloadData)
                         });
 
                         if (!response.ok) {
